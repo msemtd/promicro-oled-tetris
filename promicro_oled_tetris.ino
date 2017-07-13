@@ -71,7 +71,7 @@ uint8_t curr_tetr_w = 3;
 uint8_t curr_tetr = 0;
 uint8_t curr_tetr_rot = 0;
 
-// spawn box above field in cell units
+// spawn box top left above field in cell units
 uint8_t spawn_cx = 3;
 uint8_t spawn_cy = 22;
 
@@ -135,6 +135,17 @@ void proc_console_input(int data) {
     if(data == 'h') {
         Serial.println("h = help");
         version();
+        Serial.print("I0 = ");
+        Serial.println((uint32_t)(void *)I0, HEX);
+        for(int i = 0; i < 4; i++) {
+           Serial.print(" I0[");
+           Serial.print(i);
+           Serial.print("]=");
+           Serial.println(I0[i],BIN);
+        }
+    }
+    if(data == '0') {
+        testcells();
     }
 }
 
@@ -157,7 +168,23 @@ void drawcell(uint8_t cx, uint8_t cy, bool set) {
     // draw the 9 pixels for the cell
     uint8_t px = c2px(cx);
     uint8_t py = c2py(cy);
-    display.drawRect(px, py, TCELLSZ, TCELLSZ, (set ? WHITE : BLACK));
+    if(set) {
+        display.drawRect(px, py, TCELLSZ, TCELLSZ, WHITE);
+    } else {
+        display.fillRect(px, py, TCELLSZ, TCELLSZ, BLACK);
+    }
+}
+
+void testcells() {
+    tetris_tests();
+    for(uint8_t pass = 0; pass < 2; pass++) 
+    for(uint8_t row = 0; row < TFIELDH; row++) {
+        for(uint8_t col = 0; col < TFIELDW; col++) {
+            drawcell(col, row, (pass ? BLACK:WHITE));
+            display.display();
+            //delay(200);
+        }
+    }
 }
 
 void select_new_tet(uint8_t tt) {
@@ -177,13 +204,21 @@ void select_new_tet(uint8_t tt) {
     // the new piece should be drawn on row 22 in centre
     // draw cells within field
     // TODO clear spawn area - 4x4 cells
+    display.fillRect(c2px(spawn_cx), c2py(23), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
     // pull piece bitmap
     uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
     uint8_t bsize = curr_tetr_w;
+    
+    Serial.print("Size of ");
+    Serial.write(tet_chars[tt]);
+    Serial.print(" is ");
+    Serial.println(curr_tetr_w);
+    
     // iterate rows
     for(uint8_t r = 0; r < bsize; r++) {
         // grab the byte...
         uint8_t b = bm[r];
+        Serial.println(b, BIN);
         // iterate bits in row from right to left
         for(uint8_t c = 0; c < bsize; c++) {
             bool set = ((b >> c) & 0x01);
@@ -246,4 +281,15 @@ void fyshuffle(uint8_t *array, uint8_t n) {
         array[j] = array[i];
         array[i] = tmp;
     }
+}
+
+uint8_t hexdig(uint8_t c) {
+    if(c >= '0' && c <= '9') return c - '0';
+    if(c >= 'A' && c <= 'F') return c - 'A' + 10; 
+    if(c >= 'a' && c <= 'f') return c - 'a' + 10; 
+    return 0;
+}
+
+uint8_t hexdigs(uint8_t c1, uint8_t c2) {
+    return (hexdig(c1) << 4) | hexdig(c2);
 }

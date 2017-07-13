@@ -20,138 +20,140 @@ const uint8_t *tet_chars = {"IJLOSTZ"};
 
 const uint8_t tet_box_size[] = {4, 3, 3, 4, 3, 3, 3};
 
-const uint8_t PROGMEM I0[4] = { 
+#define FROGMEM
+
+const uint8_t I0[4] FROGMEM = { 
     B00000000, 
     B00001111, 
     B00000000, 
     B00000000, 
 };
-const uint8_t PROGMEM I1[4] = { 
+const uint8_t I1[4] FROGMEM = { 
     B00000010, 
     B00000010, 
     B00000010, 
     B00000010, 
 };
-const uint8_t PROGMEM I2[4] = { 
+const uint8_t I2[4] FROGMEM = { 
     B00000000, 
     B00000000, 
     B00001111, 
     B00000000, 
 };
-const uint8_t PROGMEM I3[4] = { 
+const uint8_t I3[4] FROGMEM = { 
     B00000100, 
     B00000100, 
     B00000100, 
     B00000100, 
 };
-const uint8_t PROGMEM J0[3] = { 
+const uint8_t J0[3] FROGMEM = { 
     B00000100, 
     B00000111, 
     B00000000, 
 };
-const uint8_t PROGMEM J1[3] = { 
+const uint8_t J1[3] FROGMEM = { 
     B00000011, 
     B00000010, 
     B00000010, 
 };
-const uint8_t PROGMEM J2[3] = { 
+const uint8_t J2[3] FROGMEM = { 
     B00000000, 
     B00000111, 
     B00000001, 
 };
-const uint8_t PROGMEM J3[3] = { 
+const uint8_t J3[3] FROGMEM = { 
     B00000010, 
     B00000010, 
     B00000110, 
 };
-const uint8_t PROGMEM L0[3] = { 
+const uint8_t L0[3] FROGMEM = { 
     B00000001, 
     B00000111, 
     B00000000, 
 };
-const uint8_t PROGMEM L1[3] = { 
+const uint8_t L1[3] FROGMEM = { 
     B00000010, 
     B00000010, 
     B00000011, 
 };
-const uint8_t PROGMEM L2[3] = { 
+const uint8_t L2[3] FROGMEM = { 
     B00000000, 
     B00000111, 
     B00000100, 
 };
-const uint8_t PROGMEM L3[3] = { 
+const uint8_t L3[3] FROGMEM = { 
     B00000110, 
     B00000010, 
     B00000010, 
 };
-const uint8_t PROGMEM O0[4] = { 
+const uint8_t O0[4] FROGMEM = { 
     B00000000, 
     B00000110, 
     B00000110, 
     B00000000, 
 };
-const uint8_t PROGMEM S0[3] = { 
+const uint8_t S0[3] FROGMEM = { 
     B00000011, 
     B00000110, 
     B00000000, 
 };
-const uint8_t PROGMEM S1[3] = { 
+const uint8_t S1[3] FROGMEM = { 
     B00000010, 
     B00000011, 
     B00000001, 
 };
-const uint8_t PROGMEM S2[3] = { 
+const uint8_t S2[3] FROGMEM = { 
     B00000000, 
     B00000011, 
     B00000110, 
 };
-const uint8_t PROGMEM S3[3] = { 
+const uint8_t S3[3] FROGMEM = { 
     B00000100, 
     B00000110, 
     B00000010, 
 };
-const uint8_t PROGMEM T0[3] = { 
+const uint8_t T0[3] FROGMEM = { 
     B00000010, 
     B00000111, 
     B00000000, 
 };
-const uint8_t PROGMEM T1[3] = { 
+const uint8_t T1[3] FROGMEM = { 
     B00000010, 
     B00000011, 
     B00000010, 
 };
-const uint8_t PROGMEM T2[3] = { 
+const uint8_t T2[3] FROGMEM = { 
     B00000000, 
     B00000111, 
     B00000010, 
 };
-const uint8_t PROGMEM T3[3] = { 
+const uint8_t T3[3] FROGMEM = { 
     B00000010, 
     B00000110, 
     B00000010, 
 };
-const uint8_t PROGMEM Z0[3] = { 
+const uint8_t Z0[3] FROGMEM = { 
     B00000110, 
     B00000011, 
     B00000000, 
 };
-const uint8_t PROGMEM Z1[3] = { 
+const uint8_t Z1[3] FROGMEM = { 
     B00000001, 
     B00000011, 
     B00000010, 
 };
-const uint8_t PROGMEM Z2[3] = { 
+const uint8_t Z2[3] FROGMEM = { 
     B00000000, 
     B00000110, 
     B00000011, 
 };
-const uint8_t PROGMEM Z3[3] = { 
+const uint8_t Z3[3] FROGMEM = { 
     B00000010, 
     B00000110, 
     B00000100, 
 };
 
-const uint8_t* tet_bms[7][4] = {
+const uint8_t* const tet_bms[7][4] FROGMEM = {
     {I0, I1, I2, I3}, 
     {J0, J1, J2, J3}, 
     {L0, L1, L2, L3}, 
