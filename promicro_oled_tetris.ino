@@ -46,10 +46,14 @@ String consoleInput = "";
     
     TASK: define and draw tetronimoes
     - simplified bitmap versions of all 7 tetronimoes
+    - perhaps have expanded bitmaps for speed but these would use more memory
+    - progmem doesn't seem to allow me the correct addressing
     TASK: allow debug serial controls to select and rotate new piece
     - no real controls yet
     TASK: random 7-system bagshuffle as per https://tetris.wiki/Random_Generator
     - a Fisher-Yates shuffle of a bag of 7
+    TASK: game flow and speed
+    TASK: rotation and wall bumps
 
 */
 
@@ -73,7 +77,7 @@ uint8_t curr_tetr_rot = 0;
 
 // spawn box top left above field in cell units
 uint8_t spawn_cx = 3;
-uint8_t spawn_cy = 22;
+uint8_t spawn_cy = 24;
 
 // field contents in cell rows
 uint16_t field_cells[24];
@@ -83,13 +87,15 @@ void setup() {
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
     TX_RX_LED_INIT;
     pinMode(RXLED, OUTPUT);
-    TXLED0;
-    RXLED0;
+    TXLED1;
+    RXLED1;
     consoleInput.reserve(DIAG_INPUT_MAX);
     Serial.begin(9600);     // serial over the USB when connected
     // Serial1.begin(9600);    // serial UART direct onto the ProMicro pins
     version();
     randomSeed(analogRead(0));
+    display.clearDisplay();
+    display.setRotation(3);
     tetris_tests();
 }
 
@@ -114,21 +120,7 @@ void loop() {
 void proc_console_input(int data) {
     Serial.println(data, DEC);
     // these are all just single character commands for testing
-    if(data == 'w') {
-        // choose next tetronimo
-        curr_tetr++;
-        curr_tetr %= 7;
-        select_new_tet(curr_tetr);
-    }
-    if(data == 'c') {
-        Serial.println("c = clear");
-        display.fillScreen(BLACK);
-        display.display();
-    }
-    if(data == 'r') {
-        Serial.println("r = redraw");
-        tetris_tests();
-    }
+    // TODO simple serial menu system - perhaps nested
     if(data == 'v') {
         version();
     }
@@ -143,6 +135,21 @@ void proc_console_input(int data) {
            Serial.print("]=");
            Serial.println(I0[i],BIN);
         }
+    }
+    if(data == 'c') {
+        Serial.println("c = clear");
+        display.clearDisplay();
+        display.display();
+    }
+    if(data == 'w') {
+        // choose next tetronimo
+        curr_tetr++;
+        curr_tetr %= 7;
+        select_new_tet(curr_tetr);
+    }
+    if(data == 'r') {
+        Serial.println("r = redraw");
+        tetris_tests();
     }
     if(data == '0') {
         testcells();
@@ -176,17 +183,24 @@ void drawcell(uint8_t cx, uint8_t cy, bool set) {
 }
 
 void testcells() {
-    tetris_tests();
-    for(uint8_t pass = 0; pass < 2; pass++) 
-    for(uint8_t row = 0; row < TFIELDH; row++) {
-        for(uint8_t col = 0; col < TFIELDW; col++) {
-            drawcell(col, row, (pass ? BLACK:WHITE));
-            display.display();
-            //delay(200);
+    // a test for the cell coordinates and drawing routines
+    tetris_field_border();
+    for(uint8_t pass = 0; pass < 2; pass++) {
+        for(uint8_t row = 0; row < TFIELDH; row++) {
+            for(uint8_t col = 0; col < TFIELDW; col++) {
+                drawcell(col, row, (pass ? BLACK:WHITE));
+                display.display();
+                //delay(200); no delay required! the display.display is slow enough!
+            }
         }
+        // the entire thing is really quick if we only update the display here with display.display();
     }
 }
 
+void clear_spawn_area() {
+    // clear spawn area - 4x4 cells
+    display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
+}
 void select_new_tet(uint8_t tt) {
     display.setCursor(0,0);
     display.println("");
@@ -201,34 +215,31 @@ void select_new_tet(uint8_t tt) {
     curr_tetr_cy = spawn_cy;
     curr_tetr_w = tet_box_size[tt];
     curr_tetr_rot = 0;
-    // the new piece should be drawn on row 22 in centre
     // draw cells within field
-    // TODO clear spawn area - 4x4 cells
-    display.fillRect(c2px(spawn_cx), c2py(23), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
-    // pull piece bitmap
+    clear_spawn_area();
+    // pull piece bitmap in current rotation
     uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
     uint8_t bsize = curr_tetr_w;
-    
-    Serial.print("Size of ");
-    Serial.write(tet_chars[tt]);
-    Serial.print(" is ");
-    Serial.println(curr_tetr_w);
-    
-    // iterate rows
+    draw_square_cell_bm(bm, bsize, curr_tetr_cx, curr_tetr_cy);
+    display.display();
+}
+
+void draw_square_cell_bm(uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t ocy) {
+    // Draw a simplified square bitmap with given top left cell origin.
+    // The bitmaps are right justified and a maximum of 8 bits wide.
+    // TODO: undraw!
+    // Iterate rows of the bitmap from top...
     for(uint8_t r = 0; r < bsize; r++) {
         // grab the byte...
         uint8_t b = bm[r];
-        Serial.println(b, BIN);
-        // iterate bits in row from right to left
+        // Iterate bits in row from right to left
         for(uint8_t c = 0; c < bsize; c++) {
             bool set = ((b >> c) & 0x01);
-            // get the cell location - row 22 col
-            uint8_t cx = curr_tetr_cx + bsize - 1 - c;
-            uint8_t cy = curr_tetr_cy + r;
+            uint8_t cx = ocx + bsize - 1 - c;
+            uint8_t cy = ocy - r;
             drawcell(cx, cy, set);
         }
     }
-    display.display();
     
     
 }
