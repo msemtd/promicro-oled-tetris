@@ -18,8 +18,13 @@ Adafruit_SSD1306 display(OLED_RESET);
 
 const int RXLED = 17;
 
+// When using a console line reading mode, append non-line-ending char to input 
+// string (if not already overflowed).
+// Both CR and LF can terminate the line and ESC (0x1b) can clear the line.
 #define DIAG_INPUT_MAX 128
 String consoleInput = "";
+bool consoleLineMode = false;
+bool consoleDebug = true;
 
 /*
 
@@ -59,28 +64,27 @@ String consoleInput = "";
 
 
 #define TFIELDW 10
-#define TFIELDH 22
+#define TFIELDH 26
 #define TCELLSZ  3
 // bottom gap of 2 for a space and ghost line
 #define TBOTGAP 2
 #define TFIELDBASE (127 - TBOTGAP)
 #define TFIELDTOP (TFIELDBASE - (TFIELDH * TCELLSZ))
+// spawn box top left above field in cell units
+#define spawn_cx 3
+#define spawn_cy 24
 
 #include "Tetrominoes.h"
 
 // map from cell x,y to pixel coords
-uint8_t curr_tetr_cx = 0;
-uint8_t curr_tetr_cy = TFIELDH;
+int8_t curr_tetr_cx = 0;
+int8_t curr_tetr_cy = TFIELDH;
 uint8_t curr_tetr_w = 3;
 uint8_t curr_tetr = 0;
 uint8_t curr_tetr_rot = 0;
 
-// spawn box top left above field in cell units
-uint8_t spawn_cx = 3;
-uint8_t spawn_cy = 24;
-
 // field contents in cell rows
-uint16_t field_cells[24];
+uint16_t field_cells[TFIELDH];
 
 void setup() {
     // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
@@ -114,47 +118,124 @@ void loop() {
     while(Serial.available()){
         proc_console_input(Serial.read());
     }
-   
 }
 
-void proc_console_input(int data) {
-    Serial.println(data, DEC);
+int proc_console_line() {
+    consoleInput.trim();
+    if(consoleInput.length() == 0)
+        return 0;
+    if(consoleDebug) {
+        Serial.print("Line mode: '");
+        Serial.print(consoleInput);
+        Serial.println("'");
+    }
+    // TODO actually have some line commands!
+    if(consoleInput == "l") {
+        Serial.print("Go to char mode...");
+        consoleLineMode = false;
+    }
+    return 0;
+}
+
+int proc_console_input(int k) {
+    // When using a console line reading mode, append non-line-ending char to input 
+    // string (if not already overflowed).
+    // Both CR and LF can terminate the line and ESC (0x1b) can clear the line.
+    if(consoleLineMode) {
+        switch(k) {
+        case 10:
+        case 13:
+            proc_console_line();
+            consoleInput = "";
+            return 0;
+        case 27:
+            consoleInput = "";
+            if(consoleDebug)
+                Serial.println("ESC");
+            return 0;
+        default:
+            // TODO backspace and arrow chars, useful stuff
+            if(consoleInput.length() < DIAG_INPUT_MAX) {
+                // ascii printable 0x20 to 0x7E
+                if(k < 0x20 || k > 0x7E) {
+                    // non-printable - do nothing
+                    if(consoleDebug) {
+                        Serial.print("non-ascii printable: ");
+                        Serial.println(k, DEC);
+                    }
+                } else {
+                    consoleInput += (char)k;
+                }
+            } else {
+                if(consoleDebug) {
+                    Serial.println("command tool long - cat sat on keyboard? discard data");
+                }
+                consoleInput = "";
+            }
+        }
+        return 0;
+    }
     // these are all just single character commands for testing
     // TODO simple serial menu system - perhaps nested
-    if(data == 'v') {
-        version();
+    if(consoleDebug) {
+        Serial.print("serial input char mode: ");
+        Serial.println(k, DEC);
     }
-    if(data == 'h') {
-        Serial.println("h = help");
+    switch(k) {
+    case 10:
+    case 13:
+    case 27:
+        return 0;
+    case 'v':
         version();
-        Serial.print("I0 = ");
-        Serial.println((uint32_t)(void *)I0, HEX);
-        for(int i = 0; i < 4; i++) {
-           Serial.print(" I0[");
-           Serial.print(i);
-           Serial.print("]=");
-           Serial.println(I0[i],BIN);
-        }
-    }
-    if(data == 'c') {
+        return 0;
+    case 'h':
+        return help();
+    case 'c':
         Serial.println("c = clear");
         display.clearDisplay();
         display.display();
-    }
-    if(data == 'w') {
+        return 0;
+    case 'w':
         // choose next tetronimo
         curr_tetr++;
         curr_tetr %= 7;
         select_new_tet(curr_tetr);
-    }
-    if(data == 'r') {
+        return 0;
+    case 'r':
         Serial.println("r = redraw");
         tetris_tests();
-    }
-    if(data == '0') {
+        return 0;
+    case '0':
         testcells();
+        return 0;
+    case 'l':
+        Serial.print("Go to line mode...");
+        consoleLineMode = true;
+        return 0;
+    case 'a':
+    case 'd':
+        int dx = (k == 'a' ? -1 : 1);
+        return tet_move(dx, 0, 0);
     }
+    return 0;
 }
+
+int help() {
+    // this should return all the known commmands
+    Serial.println("h = help");
+    version();
+    // what it does right now is run a little test...
+    Serial.print("I0 = ");
+    Serial.println((uint32_t)(void *)I0, HEX);
+    for(int i = 0; i < 4; i++) {
+        Serial.print(" I0[");
+        Serial.print(i);
+        Serial.print("]=");
+        Serial.println(I0[i],BIN);
+    }
+    return 0;
+}    
 
 /* return upper left pixel location for cell in field */
 uint8_t c2px(uint8_t cx) {
@@ -197,6 +278,100 @@ void testcells() {
     }
 }
 
+#define HIT_NOWT 0
+#define HIT_FIELD 1
+#define HIT_WALL_LEFT 2
+#define HIT_WALL_RIGHT 3
+#define HIT_FLOOR 4
+#define HIT_CEILING 5
+
+#define CELL_TEST 0
+#define CELL_DRAW 1
+#define CELL_CLEAR 2
+
+/*
+    Draw, undraw, or test for clash with field of a bitmap in cell coordinates, 
+    given cell origin top left and the bitmap width and height.
+    The bitmaps are right justified and a maximum of 8 bits wide.
+    NB: We should only draw at this location if already tested for validity.
+*/
+int plot_cell_bm(uint8_t act, const uint8_t *bm, uint8_t w, uint8_t h, int8_t ocx, int8_t ocy) {
+    int ret = HIT_NOWT;
+    // Iterate rows of the bitmap from bottom to top...
+    // NB: row is one more than the row index!
+    for(uint8_t row = h; row > 0; row--) {
+        // grab the byte...
+        uint8_t b = bm[row-1];
+        int8_t cy = ocy - row - 1;
+        // Iterate bits in row from right to left
+        for(uint8_t c = 0; c < w; c++) {
+            int8_t cx = ocx + w - 1 - c;
+            bool set = ((b >> c) & 0x01);
+            // NB: test for clash before drawing!
+            if(act == CELL_DRAW) {
+                if(set) drawcell(cx, cy, set);
+            } else if(act == CELL_CLEAR) {
+                // when undrawing, clear occupied cells
+                if(set) drawcell(cx, cy, !set);
+            } else if(act == CELL_TEST) {
+                if(!set) continue; // don't care
+                // test for clash with field
+                ret = tetris_field_test_cell(cx, cy);
+                if(ret)
+                    return ret;
+            }
+        }
+    }
+   return ret;
+}
+
+void tetris_field_clear() {
+    memset(field_cells, 0, sizeof(field_cells));
+}
+
+// return: 0 = no clash, 1 = field block clash
+// 2 = hit floor, 
+int tetris_field_test_cell(int8_t cx, int8_t cy) {
+    // If it is valid to test cell we return cell occupancy
+    if(cx > 0 && cy > 0 && cx < TFIELDW && cy < TFIELDH)
+        return (field_cells[cy] >> cx & 0x01);
+    if(cx < 0)
+        return HIT_WALL_LEFT;
+    if(cx >= TFIELDW)
+        return HIT_WALL_RIGHT;
+    if(cy <= 0)
+        return HIT_FLOOR;
+    // if we get here we are looking at a cell off the top!
+    return HIT_CEILING;
+}
+
+int tet_move(int8_t dx, int8_t dy, int8_t drot){
+    // can current piece move or rotate?
+    // it would be similar to attempted drawing of cells against field and side walls
+    int8_t rot = (int)curr_tetr_rot + drot;
+    int8_t cx = curr_tetr_cx + dx;
+    int8_t cy = curr_tetr_cy + dy;
+    
+    Serial.print(" cx="); Serial.print(cx, DEC);
+    Serial.print(" cy="); Serial.print(cy, DEC);
+    Serial.print(" rot="); Serial.print(rot, DEC);
+    while(rot < 0) rot+=4;
+    while(rot > 3) rot-=4;
+    const uint8_t *bm = tet_bms[curr_tetr][rot];
+    int problem = plot_cell_bm(CELL_TEST, bm, curr_tetr_w, curr_tetr_w, cx, cy);
+    Serial.print("plot_cell_bm test = ");
+    Serial.println(problem, DEC);
+    if(!problem) {
+        plot_cell_bm(CELL_CLEAR, bm, curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+        curr_tetr_rot = (uint8_t)rot;
+        curr_tetr_cx = cx;
+        curr_tetr_cy = cy;
+        plot_cell_bm(CELL_DRAW, bm, curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+        display.display();
+    }
+    return problem;
+}
+
 void clear_spawn_area() {
     // clear spawn area - 4x4 cells
     display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
@@ -218,20 +393,20 @@ void select_new_tet(uint8_t tt) {
     // draw cells within field
     clear_spawn_area();
     // pull piece bitmap in current rotation
-    uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
+    const uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
     uint8_t bsize = curr_tetr_w;
     draw_square_cell_bm(bm, bsize, curr_tetr_cx, curr_tetr_cy);
     display.display();
 }
 
-void draw_square_cell_bm(uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t ocy) {
+void draw_square_cell_bm(const uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t ocy) {
     // Draw a simplified square bitmap with given top left cell origin.
     // The bitmaps are right justified and a maximum of 8 bits wide.
     // TODO: undraw!
     // Iterate rows of the bitmap from top...
     for(uint8_t r = 0; r < bsize; r++) {
         // grab the byte...
-        uint8_t b = bm[r];
+        const uint8_t b = bm[r];
         // Iterate bits in row from right to left
         for(uint8_t c = 0; c < bsize; c++) {
             bool set = ((b >> c) & 0x01);
@@ -251,7 +426,8 @@ void tetris_tests() {
     display.setTextWrap(false);
     display.setTextColor(WHITE);
     display.setCursor(0,0);
-    display.println("Tetris");
+    display.println("Tetrs");
+    tetris_field_clear();
     tetris_field_border();
     select_new_tet(curr_tetr);
     tetris_ghost();
@@ -261,7 +437,6 @@ void tetris_tests() {
 
 
 }
-
 
 void tetris_ghost() {
     // draw ghost of width of active tetromino, below field
