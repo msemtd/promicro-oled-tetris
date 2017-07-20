@@ -74,6 +74,21 @@ bool consoleDebug = true;
 #define spawn_cx 3
 #define spawn_cy 24
 
+/* 
+    Level params from https://tetris.wiki/Tetris_(Game_Boy)
+    Game Boy runs at 59.73 frames per second.
+    soft-drop 1/3G
+    ARE: 2 frames (tetromino is invisible for first frame after it spawns)
+    ARE+line clear: 93 frames
+    DAS: 24 frames (1/9G)
+    Speed levels:
+*/
+uint8_t level_frames[] = {53, 49, 45, 41, 37, 33, 28, 22, 17, 11, 10, 9, 8, 7, 6, 6, 5, 5, 4, 4, 3};
+uint16_t game_lines = 0;
+uint32_t game_score = 0;
+int game_gravity = 1;
+enum gameState { ATTRACT_MODE, GAME_ON, GAME_OVER, HIGH_SCORES } game_state = ATTRACT_MODE;
+
 #include "Tetrominoes.h"
 
 // map from cell x,y to pixel coords
@@ -100,6 +115,7 @@ void setup() {
     randomSeed(analogRead(0));
     display.clearDisplay();
     display.setRotation(3);
+    game_state = ATTRACT_MODE;
     tetris_tests();
 }
 
@@ -108,16 +124,22 @@ void version() {
 }
 
 void loop() {
-    static uint32_t now;
+    static uint32_t now; // overflows every ~49.7 days
+    static uint32_t t0; // last loop start
     now = millis();
-    // button debounce and collect
-    //if(now - getLast >= getFreq) {
-    //    getLast = now;
-    //    testCrank();
-    //}
+    // 59.73 frames per second = 16.742005692281935375858027791729 ms per frame
+    switch(game_state) {
+    case GAME_ON: {
+        // frame_update(now, t0);
+        break;
+    }
+    default:
+        break;
+    }
     while(Serial.available()){
         proc_console_input(Serial.read());
     }
+    t0 = now;
 }
 
 int proc_console_line() {
@@ -448,11 +470,32 @@ void tetris_ghost() {
     display.drawFastHLine(x, y, w, WHITE);
 }
 
-
 void tetris_field_border() {
     display.drawFastVLine(0, TFIELDTOP,  TFIELDH * TCELLSZ, WHITE);
     display.drawFastVLine(31, TFIELDTOP, TFIELDH * TCELLSZ, WHITE);
     display.drawFastHLine(0, TFIELDBASE, 32, WHITE);
+}
+
+uint16_t score_system() {
+    /*
+    (from https://tetris.wiki/Scoring)
+    Original Nintendo scoring system
+    This score was used in Nintendo's versions of Tetris for NES, for Game Boy, and for Super NES.
+
+    Level	Points for
+    1 line	Points for
+    2 lines	Points for
+    3 lines	Points for
+    4 lines
+    0	40	100	300	1200
+    1	80	200	600	2400
+    2	120	300	900	3600
+    ...
+    9	400	1000	3000	12000
+    n	40 * (n + 1)	100 * (n + 1)	300 * (n + 1)	1200 * (n + 1)
+    For each piece, the game also awards the number of points equal to the number of grid spaces that the player has continuously soft dropped the piece. Unlike the points for lines, this does not increase per level.
+    */
+    return 0;
 }
 
 static uint8_t rand_int(uint8_t n) {
