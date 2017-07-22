@@ -72,7 +72,7 @@ bool consoleDebug = true;
 #define TFIELDTOP (TFIELDBASE - (TFIELDH * TCELLSZ))
 // spawn box top left above field in cell units
 #define spawn_cx 3
-#define spawn_cy 24
+#define spawn_cy TFIELDH
 
 /* 
     Level params from https://tetris.wiki/Tetris_(Game_Boy)
@@ -199,10 +199,6 @@ int proc_console_input(int k) {
     }
     // these are all just single character commands for testing
     // TODO simple serial menu system - perhaps nested
-    if(consoleDebug) {
-        Serial.print("serial input char mode: ");
-        Serial.println(k, DEC);
-    }
     switch(k) {
     case 10:
     case 13:
@@ -237,8 +233,18 @@ int proc_console_input(int k) {
         return 0;
     case 'a':
     case 'd':
-        int dx = (k == 'a' ? -1 : 1);
-        return tet_move(dx, 0, 0);
+        return tet_move((k == 'a' ? -1 : 1), 0, 0);
+    case 's': // down
+        return tet_move(0, -1, 0);
+    case ',': // rotate-left
+        return tet_move(0, 0, -1);
+    case '.': // rotate-right
+        return tet_move(0, 0, 1);
+    default:
+        if(consoleDebug) {
+            Serial.print("serial input char mode: ");
+            Serial.println(k, DEC);
+        }
     }
     return 0;
 }
@@ -355,7 +361,7 @@ void tetris_field_clear() {
 // 2 = hit floor, 
 int tetris_field_test_cell(int8_t cx, int8_t cy) {
     // If it is valid to test cell we return cell occupancy
-    if(cx > 0 && cy > 0 && cx < TFIELDW && cy < TFIELDH)
+    if(cx >= 0 && cy >= 0 && cx < TFIELDW && cy < TFIELDH)
         return (field_cells[cy] >> cx & 0x01);
     if(cx < 0)
         return HIT_WALL_LEFT;
@@ -369,26 +375,20 @@ int tetris_field_test_cell(int8_t cx, int8_t cy) {
 
 int tet_move(int8_t dx, int8_t dy, int8_t drot){
     // can current piece move or rotate?
-    // it would be similar to attempted drawing of cells against field and side walls
     int8_t rot = (int)curr_tetr_rot + drot;
     int8_t cx = curr_tetr_cx + dx;
     int8_t cy = curr_tetr_cy + dy;
-    
     Serial.print(" cx="); Serial.print(cx, DEC);
     Serial.print(" cy="); Serial.print(cy, DEC);
     Serial.print(" rot="); Serial.print(rot, DEC);
-    while(rot < 0) rot+=4;
-    while(rot > 3) rot-=4;
-    const uint8_t *bm = tet_bms[curr_tetr][rot];
-    int problem = plot_cell_bm(CELL_TEST, bm, curr_tetr_w, curr_tetr_w, cx, cy);
-    Serial.print("plot_cell_bm test = ");
-    Serial.println(problem, DEC);
+    while(rot < 0) rot+=4; while(rot > 3) rot-=4;
+    int problem = plot_cell_bm(CELL_TEST, tet_bms[curr_tetr][rot], curr_tetr_w, curr_tetr_w, cx, cy);
+    Serial.print("plot_cell_bm test = "); Serial.println(problem, DEC);
     if(!problem) {
-        plot_cell_bm(CELL_CLEAR, bm, curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
-        curr_tetr_rot = (uint8_t)rot;
-        curr_tetr_cx = cx;
-        curr_tetr_cy = cy;
-        plot_cell_bm(CELL_DRAW, bm, curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+        // go ahead and move/rotate: undraw current tetromimo, rotation, position...
+        plot_cell_bm(CELL_CLEAR, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+        curr_tetr_rot = (uint8_t)rot; curr_tetr_cx = cx; curr_tetr_cy = cy;
+        plot_cell_bm(CELL_DRAW, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
         display.display();
     }
     return problem;
@@ -414,11 +414,16 @@ void select_new_tet(uint8_t tt) {
     curr_tetr_rot = 0;
     // draw cells within field
     clear_spawn_area();
-    // pull piece bitmap in current rotation
-    const uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
-    uint8_t bsize = curr_tetr_w;
-    draw_square_cell_bm(bm, bsize, curr_tetr_cx, curr_tetr_cy);
-    display.display();
+    if(0) {
+        // old draw
+        // pull piece bitmap in current rotation
+        const uint8_t *bm = tet_bms[curr_tetr][curr_tetr_rot];
+        uint8_t bsize = curr_tetr_w;
+        draw_square_cell_bm(bm, bsize, curr_tetr_cx, curr_tetr_cy);
+        display.display();
+    } else {
+        tet_move(0,0,0);
+    }
 }
 
 void draw_square_cell_bm(const uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t ocy) {

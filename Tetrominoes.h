@@ -20,6 +20,8 @@ const uint8_t *tet_chars = {"IJLOSTZ"};
 
 const uint8_t tet_box_size[] = {4, 3, 3, 4, 3, 3, 3};
 
+// can't get PROGMEM to work so define this later when we fix it
+// #define FROGMEM PROGMEM`
 #define FROGMEM
 
 const uint8_t I0[4] FROGMEM = { 
