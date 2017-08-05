@@ -8,6 +8,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "deb8.h"
 
 #define OLED_RESET 4
 Adafruit_SSD1306 display(OLED_RESET);
@@ -17,6 +18,15 @@ Adafruit_SSD1306 display(OLED_RESET);
 #endif
 
 const int RXLED = 17;
+
+// Digital I/O for all 16 possible buttons/joypad on the Pro-Micro
+//const uint8_t d_map[16] = {2,3,4,5,6,7,8,9,
+//                           10,16,14,15,18,19,20,21};
+// We only need 8 inputs so use an 8-bit state var and deboucer
+const uint8_t d_map[8] = {10,16,14,15,18,19,20,21};
+// Here we want just the top 8 inputs
+static uint8_t d_inputs = 0;
+static debounce8_t d_deb;
 
 // When using a console line reading mode, append non-line-ending char to input 
 // string (if not already overflowed).
@@ -102,12 +112,14 @@ uint8_t curr_tetr_rot = 0;
 uint16_t field_cells[TFIELDH];
 
 void setup() {
-    // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
-    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
     TX_RX_LED_INIT;
     pinMode(RXLED, OUTPUT);
     TXLED1;
     RXLED1;
+    inputs_setup();
+
+    // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
     consoleInput.reserve(DIAG_INPUT_MAX);
     Serial.begin(9600);     // serial over the USB when connected
     // Serial1.begin(9600);    // serial UART direct onto the ProMicro pins
@@ -128,6 +140,7 @@ void loop() {
     static uint32_t t0; // last loop start
     now = millis();
     // 59.73 frames per second = 16.742005692281935375858027791729 ms per frame
+    task_inputs();
     switch(game_state) {
     case GAME_ON: {
         // frame_update(now, t0);
@@ -140,6 +153,41 @@ void loop() {
         proc_console_input(Serial.read());
     }
     t0 = now;
+}
+
+void inputs_setup(void) {
+    for (int i = 0; i < 8; i++) {
+        pinMode(d_map[i], INPUT_PULLUP);
+    }
+    d_inputs = inputs_read();
+}
+
+uint16_t inputs_read(void) {
+    uint8_t d_samp = 0;
+    for (int i = 0; i < 8; i++) {
+        bitWrite(d_samp, i, (digitalRead(d_map[i]) ? 0 : 1));
+    }
+    return d_samp;
+}
+
+
+/*
+ * The inputs are sampled every 5 ms (max)
+ */
+void task_inputs(void)
+{
+  static uint32_t last;
+  uint32_t now = millis();
+  if (now - last > 5) {
+    last = now;
+    uint8_t d_samp = inputs_read();
+    d_samp = debouncer8(d_samp, &d_deb);
+    if (d_samp != d_inputs) {
+      d_inputs = d_samp;
+      Serial.print("Inputs: ");
+      Serial.println(d_inputs, BIN);
+    }
+  }
 }
 
 int proc_console_line() {
