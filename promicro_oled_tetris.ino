@@ -28,6 +28,16 @@ const uint8_t d_map[8] = {10,16,14,15,18,19,20,21};
 static uint8_t d_inputs = 0;
 static debounce8_t d_deb;
 
+// Inputs on the NES controller
+#define BTN_UP 1
+#define BTN_DOWN 2
+#define BTN_RIGHT 4
+#define BTN_LEFT 8
+#define BTN_B 16
+#define BTN_A 32
+#define BTN_START 64
+#define BTN_SELECT 128
+
 // When using a console line reading mode, append non-line-ending char to input 
 // string (if not already overflowed).
 // Both CR and LF can terminate the line and ESC (0x1b) can clear the line.
@@ -64,7 +74,6 @@ bool consoleDebug = true;
     - perhaps have expanded bitmaps for speed but these would use more memory
     - progmem doesn't seem to allow me the correct addressing
     TASK: allow debug serial controls to select and rotate new piece
-    - no real controls yet
     TASK: random 7-system bagshuffle as per https://tetris.wiki/Random_Generator
     - a Fisher-Yates shuffle of a bag of 7
     TASK: game flow and speed
@@ -149,12 +158,52 @@ void loop() {
     default:
         break;
     }
+    // quick hack for some controls
+    button_action(d_inputs);
     while(Serial.available()){
         proc_console_input(Serial.read());
     }
     t0 = now;
 }
 
+uint16_t button_action(uint8_t din) {
+    // 8 button version
+    static uint8_t dheld = 0;
+    // 1. a button that is pressed and wasn't held
+    // needs to be pressed and set as held
+    // 2. a button that has just been released needs to be unheld
+    // 3. For simple games we don't need to track button releases
+    // Are we just looking at xor to see if changes have happened?
+    uint8_t changes = din ^ dheld;
+    uint8_t new_presses = changes & din;
+    uint8_t new_releases = changes & ~din;
+    dheld = din;
+    // TODO test releases
+    // action these...
+    // TODO button_action2(din, changes, new_presses, new_releases)
+    uint8_t don = new_presses;
+    if(don & BTN_A) tet_move(0, 0, 1);
+    if(don & BTN_B) tet_move(0, 0, -1);
+    if(don & BTN_LEFT) tet_move(-1, 0, 0);
+    if(don & BTN_RIGHT) tet_move(1, 0, 0);
+    if(don & BTN_DOWN) tet_move(0, -1, 0);
+    if(don & BTN_SELECT) {
+        // choose next tetronimo
+        curr_tetr++;
+        curr_tetr %= 7;
+        select_new_tet(curr_tetr);
+    }
+    if(don & BTN_SELECT) {
+        Serial.println("r = redraw");
+        tetris_tests();
+    }
+    if(din == BTN_UP & BTN_START) {
+        testcells();
+        return;
+    }
+    // 
+
+}
 void inputs_setup(void) {
     for (int i = 0; i < 8; i++) {
         pinMode(d_map[i], INPUT_PULLUP);
