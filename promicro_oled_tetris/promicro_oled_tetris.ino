@@ -197,7 +197,7 @@ uint16_t button_action(uint8_t din) {
         Serial.println("r = redraw");
         tetris_tests();
     }
-    if(din == BTN_UP & BTN_START) {
+    if(din == (BTN_UP | BTN_START)) {
         testcells();
         return;
     }
