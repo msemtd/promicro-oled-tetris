@@ -413,6 +413,7 @@ void testcells() {
 #define CELL_TEST 0
 #define CELL_DRAW 1
 #define CELL_CLEAR 2
+#define CELL_FIELD_MERGE 3
 
 /*
     Draw, undraw, or test for clash with field of a bitmap in cell coordinates, 
@@ -444,6 +445,8 @@ int plot_cell_bm(uint8_t act, const uint8_t *bm, uint8_t w, uint8_t h, int8_t oc
                 ret = tetris_field_test_cell(cx, cy);
                 if(ret)
                     return ret;
+            } else if(act == CELL_FIELD_MERGE) {
+                
             }
         }
     }
@@ -487,6 +490,16 @@ int tet_move(int8_t dx, int8_t dy, int8_t drot){
         curr_tetr_rot = (uint8_t)rot; curr_tetr_cx = cx; curr_tetr_cy = cy;
         plot_cell_bm(CELL_DRAW, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
         display.display();
+    } else {
+        if(dy < 0 && (problem == HIT_FLOOR) || (problem == HIT_FIELD)) {
+            // merge tetronimo to field - use plot_cell_bm?
+            // TODO ensure that plot_cell_bm returns HIT_FIELD or HIT_FLOOR earlier than HIT_WALL_LEFT or HIT_WALL_RIGHT!!!!
+            // Hmmm, the proposed rotation might cause it to hit the floor
+            // but we just want to prevent the rotation rather than merge.
+            // Perhaps we need to ensure that only one rotate or one move
+            // is done for any one call to tet_move.
+            
+        }
     }
     return problem;
 }
