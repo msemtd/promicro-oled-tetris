@@ -166,7 +166,7 @@ void loop() {
     t0 = now;
 }
 
-uint16_t button_action(uint8_t din) {
+void button_action(uint8_t din) {
     // 8 button version
     static uint8_t dheld = 0;
     // 1. a button that is pressed and wasn't held
@@ -211,7 +211,7 @@ void inputs_setup(void) {
     d_inputs = inputs_read();
 }
 
-uint16_t inputs_read(void) {
+uint8_t inputs_read(void) {
     uint8_t d_samp = 0;
     for (int i = 0; i < 8; i++) {
         bitWrite(d_samp, i, (digitalRead(d_map[i]) ? 0 : 1));
