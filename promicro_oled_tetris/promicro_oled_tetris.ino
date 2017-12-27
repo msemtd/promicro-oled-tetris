@@ -38,7 +38,7 @@ static debounce8_t d_deb;
 #define BTN_START 64
 #define BTN_SELECT 128
 
-// When using a console line reading mode, append non-line-ending char to input 
+// When using a console line reading mode, append non-line-ending char to input
 // string (if not already overflowed).
 // Both CR and LF can terminate the line and ESC (0x1b) can clear the line.
 #define DIAG_INPUT_MAX 128
@@ -49,26 +49,26 @@ bool consoleDebug = true;
 /*
 
     The Tetris magic - follow the guidelines at https://tetris.wiki/Tetris_Guideline
-    
+
     On the little 128x32 SSD1306 OLED the playing field has the top on the left
     and the bottom on the right.
-    
+
     Luckily the Adafruit GFX library can rotate the coords for us
     https://learn.adafruit.com/adafruit-gfx-graphics-library/overview
-    
-    We can fit a playing field that is the standard 10 columns wide when 
+
+    We can fit a playing field that is the standard 10 columns wide when
     using 3x3 pixel cells. There is plenty of room for a standard 22-24 rows.
 
     "Columns are conventionally numbered from left to right, and rows from bottom to top."
 
-    We will translate between cell coordinates and pixel coordinates using 
+    We will translate between cell coordinates and pixel coordinates using
     various game field pixel offsets.
-    
+
     The ghost of the active tetromino can be shown as a shadow line in a 2 pixel gap under the field border.
 
     For input we will eventually have some buttons but for now we can use serial input.
     When in game mode then single keypresses will be read from the serial terminal.
-    
+
     TASK: define and draw tetronimoes
     - simplified bitmap versions of all 7 tetronimoes
     - perhaps have expanded bitmaps for speed but these would use more memory
@@ -93,7 +93,7 @@ bool consoleDebug = true;
 #define spawn_cx 3
 #define spawn_cy TFIELDH
 
-/* 
+/*
     Level params from https://tetris.wiki/Tetris_(Game_Boy)
     Game Boy runs at 59.73 frames per second.
     soft-drop 1/3G
@@ -121,6 +121,7 @@ uint8_t curr_tetr_rot = 0;
 uint16_t field_cells[TFIELDH];
 // bag of 7 shuffled tetronimoes...
 uint8_t tet_bag[7];
+uint8_t tet_bix;
 
 void setup() {
     TX_RX_LED_INIT;
@@ -139,7 +140,8 @@ void setup() {
     display.clearDisplay();
     display.setRotation(3);
     game_state = ATTRACT_MODE;
-    newbag();
+    tet_bix = 99; // force a new bag
+    curr_tetr = next_tet();
     tetris_tests();
 }
 
@@ -192,9 +194,7 @@ void button_action(uint8_t din) {
     if(don & BTN_DOWN) tet_move(0, -1, 0);
     if(don & BTN_SELECT) {
         // choose next tetronimo
-        curr_tetr++;
-        curr_tetr %= 7;
-        select_new_tet(curr_tetr);
+        select_tet(next_tet());
     }
     if(don & BTN_SELECT) {
         Serial.println("r = redraw");
@@ -204,7 +204,7 @@ void button_action(uint8_t din) {
         testcells();
         return;
     }
-    // 
+    //
 
 }
 void inputs_setup(void) {
@@ -251,25 +251,26 @@ int proc_console_line() {
         Serial.print(consoleInput);
         Serial.println("'");
     }
-     if(consoleInput.length() == 1) {
+    if(consoleInput.length() == 1) {
         return proc_command(consoleInput[0]);
     }
-   // TODO actually have some line commands!
+    // Line commands...
     if(consoleInput == "t1") {
         Serial.println("t1 = Test the shuffle");
         newbag();
         for(uint8_t i = 0; i < sizeof(tet_bag); i++) {
             Serial.print(tet_bag[i], DEC);
+            Serial.print(" ");
         }
         Serial.println();
         return 0;
     }
-    
+
     return 0;
 }
 
 int proc_console_input(int k) {
-    // When using a console line reading mode, append non-line-ending char to input 
+    // When using a console line reading mode, append non-line-ending char to input
     // string (if not already overflowed).
     // Both CR and LF can terminate the line and ESC (0x1b) can clear the line.
     if(consoleLineMode) {
@@ -374,9 +375,7 @@ int proc_command(int k) {
         return tet_move(0, -1, 0);
     case 'x':
         // choose next tetronimo
-        curr_tetr++;
-        curr_tetr %= 7;
-        select_new_tet(curr_tetr);
+        select_tet(next_tet());
         return 0;
     case ',': // rotate-left
         return tet_move(0, 0, -1);
@@ -445,7 +444,7 @@ void testcells() {
 #define CELL_FIELD_MERGE 3
 
 /*
-    Draw, undraw, or test for clash with field of a bitmap in cell coordinates, 
+    Draw, undraw, or test for clash with field of a bitmap in cell coordinates,
     given cell origin top left and the bitmap width and height.
     The bitmaps are right justified and a maximum of 8 bits wide.
     NB: We should only draw at this location if already tested for validity.
@@ -475,7 +474,7 @@ int plot_cell_bm(uint8_t act, const uint8_t *bm, uint8_t w, uint8_t h, int8_t oc
                 if(ret)
                     return ret;
             } else if(act == CELL_FIELD_MERGE) {
-                
+
             }
         }
     }
@@ -487,7 +486,7 @@ void tetris_field_clear() {
 }
 
 // return: 0 = no clash, 1 = field block clash
-// 2 = hit floor, 
+// 2 = hit floor,
 int tetris_field_test_cell(int8_t cx, int8_t cy) {
     // If it is valid to test cell we return cell occupancy
     if(cx >= 0 && cy >= 0 && cx < TFIELDW && cy < TFIELDH)
@@ -518,6 +517,7 @@ int tet_move(int8_t dx, int8_t dy, int8_t drot){
         plot_cell_bm(CELL_CLEAR, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
         curr_tetr_rot = (uint8_t)rot; curr_tetr_cx = cx; curr_tetr_cy = cy;
         plot_cell_bm(CELL_DRAW, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+        tetris_shadow();
         display.display();
     } else {
         if(dy < 0 && ((problem == HIT_FLOOR) || (problem == HIT_FIELD))) {
@@ -527,7 +527,7 @@ int tet_move(int8_t dx, int8_t dy, int8_t drot){
             // but we just want to prevent the rotation rather than merge.
             // Perhaps we need to ensure that only one rotate or one move
             // is done for any one call to tet_move.
-            
+
         }
     }
     return problem;
@@ -537,7 +537,20 @@ void clear_spawn_area() {
     // clear spawn area - 4x4 cells
     display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
 }
-void select_new_tet(uint8_t tt) {
+
+uint8_t next_tet() {
+    // Get the next tetromino from the random bag...
+    tet_bix++;
+    if(tet_bix >= sizeof(tet_bag)) {
+        newbag();
+        tet_bix = 0;
+    }
+    return tet_bag[tet_bix];
+}
+
+void select_tet(uint8_t tt) {
+    // Select the current tetronimo and spawn...
+    curr_tetr = tt;
     display.setCursor(0,0);
     display.println("");
     display.setTextSize(1);
@@ -546,7 +559,6 @@ void select_new_tet(uint8_t tt) {
     display.print((int)tt, DEC);
     display.print("=");
     display.write(tet_chars[tt]);
-    curr_tetr = tt;
     curr_tetr_cx = spawn_cx;
     curr_tetr_cy = spawn_cy;
     curr_tetr_w = tet_box_size[tt];
@@ -593,14 +605,13 @@ void tetris_tests() {
     display.println("Tetrs");
     tetris_field_clear();
     tetris_field_border();
-    select_new_tet(curr_tetr);
-    tetris_ghost();
+    select_tet(curr_tetr);
 
     display.display();
 }
 
-void tetris_ghost() {
-    // draw ghost of width of active tetromino, below field
+void tetris_shadow() {
+    // Draw shadow drop hint the width of active tetromino, below field...
     // cxy to pxy
     // cx2px()
     uint8_t x = (curr_tetr_cx * TCELLSZ) + 1;
@@ -621,17 +632,17 @@ uint16_t score_system() {
     Original Nintendo scoring system
     This score was used in Nintendo's versions of Tetris for NES, for Game Boy, and for Super NES.
 
-    Level	Points for
-    1 line	Points for
-    2 lines	Points for
-    3 lines	Points for
+    Level   Points for
+    1 line  Points for
+    2 lines Points for
+    3 lines Points for
     4 lines
-    0	40	100	300	1200
-    1	80	200	600	2400
-    2	120	300	900	3600
+    0   40  100 300 1200
+    1   80  200 600 2400
+    2  120  300 900 3600
     ...
-    9	400	1000	3000	12000
-    n	40 * (n + 1)	100 * (n + 1)	300 * (n + 1)	1200 * (n + 1)
+    9  400 1000 3000 12000
+    n  40 * (n + 1) 100 * (n + 1)  300 * (n + 1)    1200 * (n + 1)
     For each piece, the game also awards the number of points equal to the number of grid spaces that the player has continuously soft dropped the piece. Unlike the points for lines, this does not increase per level.
     */
     // TODO
@@ -661,8 +672,8 @@ void newbag() {
 uint8_t hexdig(uint8_t c) {
     // Hex input...
     if(c >= '0' && c <= '9') return c - '0';
-    if(c >= 'A' && c <= 'F') return c - 'A' + 10; 
-    if(c >= 'a' && c <= 'f') return c - 'a' + 10; 
+    if(c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if(c >= 'a' && c <= 'f') return c - 'a' + 10;
     return 0;
 }
 
