@@ -119,6 +119,8 @@ uint8_t curr_tetr_rot = 0;
 
 // field contents in cell rows
 uint16_t field_cells[TFIELDH];
+// bag of 7 shuffled tetronimoes...
+uint8_t tet_bag[7];
 
 void setup() {
     TX_RX_LED_INIT;
@@ -137,6 +139,7 @@ void setup() {
     display.clearDisplay();
     display.setRotation(3);
     game_state = ATTRACT_MODE;
+    newbag();
     tetris_tests();
 }
 
@@ -248,11 +251,20 @@ int proc_console_line() {
         Serial.print(consoleInput);
         Serial.println("'");
     }
-    // TODO actually have some line commands!
-    if(consoleInput == "l") {
-        Serial.print("Go to char mode...");
-        consoleLineMode = false;
+     if(consoleInput.length() == 1) {
+        return proc_command(consoleInput[0]);
     }
+   // TODO actually have some line commands!
+    if(consoleInput == "t1") {
+        Serial.println("t1 = Test the shuffle");
+        newbag();
+        for(uint8_t i = 0; i < sizeof(tet_bag); i++) {
+            Serial.print(tet_bag[i], DEC);
+        }
+        Serial.println();
+        return 0;
+    }
+    
     return 0;
 }
 
@@ -294,8 +306,21 @@ int proc_console_input(int k) {
         }
         return 0;
     }
-    // these are all just single character commands for testing
-    // TODO simple serial menu system - perhaps nested
+    return proc_command(k);
+}
+
+int help() {
+    // this should return all the known commmands
+    Serial.println("h/? = help");
+    Serial.println("t1 = Test the shuffle");
+    Serial.println("v = version");
+    Serial.println("l = toggle line mode");
+    Serial.println("i = inputs");
+    return 0;
+}
+
+int proc_command(int k) {
+    // Single character commands...
     switch(k) {
     case 10:
     case 13:
@@ -305,62 +330,66 @@ int proc_console_input(int k) {
         version();
         return 0;
     case 'h':
+    case '?':
         return help();
+    case 'd':
+        Serial.println("d = console debug on/off");
+        consoleDebug = !consoleDebug;
+        Serial.print("console debug is now ");
+        Serial.println(consoleDebug);
+        return 0;
+    case 'l':
+        Serial.println("l = toggle line mode");
+        consoleLineMode = !consoleLineMode;
+        Serial.print("line mode is now ");
+        Serial.println(consoleLineMode);
+        return 0;
+    case 'i':
+        // what it does right now is run a little test...
+        Serial.print("I0 = ");
+        Serial.println((uint32_t)(void *)I0, HEX);
+        for(int i = 0; i < 4; i++) {
+            Serial.print(" I0[");
+            Serial.print(i);
+            Serial.print("]=");
+            Serial.println(I0[i],BIN);
+        }
+        return 0;
+    case '0':
+        testcells();
+        return 0;
     case 'c':
         Serial.println("c = clear");
         display.clearDisplay();
         display.display();
         return 0;
+    case 'r':
+        Serial.println("r = redraw");
+        tetris_tests();
+        return 0;
+    case 'q':
     case 'w':
+        return tet_move((k == 'q' ? -1 : 1), 0, 0);
+    case 'z': // down
+        return tet_move(0, -1, 0);
+    case 'x':
         // choose next tetronimo
         curr_tetr++;
         curr_tetr %= 7;
         select_new_tet(curr_tetr);
         return 0;
-    case 'r':
-        Serial.println("r = redraw");
-        tetris_tests();
-        return 0;
-    case '0':
-        testcells();
-        return 0;
-    case 'l':
-        Serial.print("Go to line mode...");
-        consoleLineMode = true;
-        return 0;
-    case 'a':
-    case 'd':
-        return tet_move((k == 'a' ? -1 : 1), 0, 0);
-    case 's': // down
-        return tet_move(0, -1, 0);
     case ',': // rotate-left
         return tet_move(0, 0, -1);
     case '.': // rotate-right
         return tet_move(0, 0, 1);
     default:
         if(consoleDebug) {
-            Serial.print("serial input char mode: ");
+            Serial.print("proc_command unused: ");
             Serial.println(k, DEC);
         }
     }
     return 0;
 }
-
-int help() {
-    // this should return all the known commmands
-    Serial.println("h = help");
-    version();
-    // what it does right now is run a little test...
-    Serial.print("I0 = ");
-    Serial.println((uint32_t)(void *)I0, HEX);
-    for(int i = 0; i < 4; i++) {
-        Serial.print(" I0[");
-        Serial.print(i);
-        Serial.print("]=");
-        Serial.println(I0[i],BIN);
-    }
-    return 0;
-}    
 
 /* return upper left pixel location for cell in field */
 uint8_t c2px(uint8_t cx) {
@@ -491,7 +520,7 @@ int tet_move(int8_t dx, int8_t dy, int8_t drot){
         plot_cell_bm(CELL_DRAW, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
         display.display();
     } else {
-        if(dy < 0 && (problem == HIT_FLOOR) || (problem == HIT_FIELD)) {
+        if(dy < 0 && ((problem == HIT_FLOOR) || (problem == HIT_FIELD))) {
             // merge tetronimo to field - use plot_cell_bm?
             // TODO ensure that plot_cell_bm returns HIT_FIELD or HIT_FLOOR earlier than HIT_WALL_LEFT or HIT_WALL_RIGHT!!!!
             // Hmmm, the proposed rotation might cause it to hit the floor
@@ -552,8 +581,6 @@ void draw_square_cell_bm(const uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t 
             drawcell(cx, cy, set);
         }
     }
-    
-    
 }
 
 void tetris_tests() {
@@ -569,10 +596,7 @@ void tetris_tests() {
     select_new_tet(curr_tetr);
     tetris_ghost();
 
-
     display.display();
-
-
 }
 
 void tetris_ghost() {
@@ -610,6 +634,7 @@ uint16_t score_system() {
     n	40 * (n + 1)	100 * (n + 1)	300 * (n + 1)	1200 * (n + 1)
     For each piece, the game also awards the number of points equal to the number of grid spaces that the player has continuously soft dropped the piece. Unlike the points for lines, this does not increase per level.
     */
+    // TODO
     return 0;
 }
 
@@ -627,7 +652,14 @@ void fyshuffle(uint8_t *array, uint8_t n) {
     }
 }
 
+void newbag() {
+    for(uint8_t i = 0; i < sizeof(tet_bag); i++) {
+        tet_bag[i] = i;
+    }
+    fyshuffle(tet_bag, sizeof(tet_bag));
+}
 uint8_t hexdig(uint8_t c) {
+    // Hex input...
     if(c >= '0' && c <= '9') return c - '0';
     if(c >= 'A' && c <= 'F') return c - 'A' + 10; 
     if(c >= 'a' && c <= 'f') return c - 'a' + 10; 
@@ -635,5 +667,6 @@ uint8_t hexdig(uint8_t c) {
 }
 
 uint8_t hexdigs(uint8_t c1, uint8_t c2) {
+    // Hex input...
     return (hexdig(c1) << 4) | hexdig(c2);
 }
