@@ -4,6 +4,7 @@
   #include <avr/power.h>
 #endif
 
+#define THELP Serial.println
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -222,12 +223,10 @@ uint8_t inputs_read(void) {
     return d_samp;
 }
 
-
 /*
  * The inputs are sampled every 5 ms (max)
  */
-void task_inputs(void)
-{
+void task_inputs(void) {
   static uint32_t last;
   uint32_t now = millis();
   if (now - last > 5) {
@@ -240,6 +239,13 @@ void task_inputs(void)
       Serial.println(d_inputs, BIN);
     }
   }
+}
+
+char hexnib(uint8_t b, bool upper) {
+    uint8_t t = b >> (upper ? 4 : 0);
+    t = t & 0x0F;
+    t += (t >= 10 ? 'A'-10 : '0');
+    return (char)t;
 }
 
 int proc_console_line() {
@@ -256,12 +262,21 @@ int proc_console_line() {
     }
     // Line commands...
     if(consoleInput == "t1") {
-        Serial.println("t1 = Test the shuffle");
+        THELP("t1 = Test the shuffle");
         newbag();
         for(uint8_t i = 0; i < sizeof(tet_bag); i++) {
             Serial.print(tet_bag[i], DEC);
             Serial.print(" ");
         }
+        Serial.println();
+        return 0;
+    }
+    // Line commands...
+    if(consoleInput == "t2") {
+        THELP("t2 = Test the hex functions");
+        Serial.print("Hex for 254 is ");
+        Serial.print(hexnib(254, true));
+        Serial.print(hexnib(254, false));
         Serial.println();
         return 0;
     }
@@ -312,11 +327,13 @@ int proc_console_input(int k) {
 
 int help() {
     // this should return all the known commmands
-    Serial.println("h/? = help");
-    Serial.println("t1 = Test the shuffle");
-    Serial.println("v = version");
-    Serial.println("l = toggle line mode");
-    Serial.println("i = inputs");
+    THELP("h/? = help");
+    THELP("t1 = Test the shuffle");
+    THELP("v = version");
+    THELP("l = toggle line mode");
+    THELP("d = console debug on/off");
+
+    THELP("i = inputs");
     return 0;
 }
 
@@ -334,13 +351,13 @@ int proc_command(int k) {
     case '?':
         return help();
     case 'd':
-        Serial.println("d = console debug on/off");
+        THELP("d = console debug on/off");
         consoleDebug = !consoleDebug;
         Serial.print("console debug is now ");
         Serial.println(consoleDebug);
         return 0;
     case 'l':
-        Serial.println("l = toggle line mode");
+        THELP("l = toggle line mode");
         consoleLineMode = !consoleLineMode;
         Serial.print("line mode is now ");
         Serial.println(consoleLineMode);
@@ -360,12 +377,12 @@ int proc_command(int k) {
         testcells();
         return 0;
     case 'c':
-        Serial.println("c = clear");
+        THELP("c = clear");
         display.clearDisplay();
         display.display();
         return 0;
     case 'r':
-        Serial.println("r = redraw");
+        THELP("r = redraw");
         tetris_tests();
         return 0;
     case 'q':
@@ -538,16 +555,6 @@ void clear_spawn_area() {
     display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
 }
 
-uint8_t next_tet() {
-    // Get the next tetromino from the random bag...
-    tet_bix++;
-    if(tet_bix >= sizeof(tet_bag)) {
-        newbag();
-        tet_bix = 0;
-    }
-    return tet_bag[tet_bix];
-}
-
 void select_tet(uint8_t tt) {
     // Select the current tetronimo and spawn...
     curr_tetr = tt;
@@ -617,6 +624,7 @@ void tetris_shadow() {
     uint8_t x = (curr_tetr_cx * TCELLSZ) + 1;
     uint8_t y = 127;
     uint8_t w = (curr_tetr_w * TCELLSZ);
+    display.drawFastHLine(0, y, 32, BLACK);
     display.drawFastHLine(x, y, w, WHITE);
 }
 
@@ -649,6 +657,17 @@ uint16_t score_system() {
     return 0;
 }
 
+uint8_t next_tet() {
+    // Get the next tetromino from the random bag...
+    tet_bix++;
+    if(tet_bix >= sizeof(tet_bag)) {
+        newbag();
+        tet_bix = 0;
+    }
+    return tet_bag[tet_bix];
+}
+
+//-----------------------------------------------------------------------------
 static uint8_t rand_int(uint8_t n) {
     return (uint8_t)random(n);
 }
@@ -669,6 +688,8 @@ void newbag() {
     }
     fyshuffle(tet_bag, sizeof(tet_bag));
 }
+
+//-----------------------------------------------------------------------------
 uint8_t hexdig(uint8_t c) {
     // Hex input...
     if(c >= '0' && c <= '9') return c - '0';
