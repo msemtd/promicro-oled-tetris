@@ -1,14 +1,11 @@
 #ifndef TETRONIMOS_H
 #define TETRONIMOS_H
-/* 
- * 
- * 
+/*
  * define the 4 rotational states of each of the 7 tetronimos as per https://tetris.wiki/SRS
- * 
- * 
  */
 
-const uint8_t *tet_chars = {"IJLOSTZ"};
+//const uint8_t *tet_chars = (const uint8_t *){"IJLOSTZ"};
+const uint8_t tet_chars[] = {'I', 'J', 'L', 'O', 'S', 'T' , 'Z'};
 
 #define TET_I 0
 #define TET_J 1

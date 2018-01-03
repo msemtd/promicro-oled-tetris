@@ -70,12 +70,12 @@ bool consoleDebug = true;
     For input we will eventually have some buttons but for now we can use serial input.
     When in game mode then single keypresses will be read from the serial terminal.
 
-    TASK: define and draw tetronimoes
+    - define and draw tetronimoes
     - simplified bitmap versions of all 7 tetronimoes
     - perhaps have expanded bitmaps for speed but these would use more memory
     - progmem doesn't seem to allow me the correct addressing
-    TASK: allow debug serial controls to select and rotate new piece
-    TASK: random 7-system bagshuffle as per https://tetris.wiki/Random_Generator
+    - allow debug serial controls to select and rotate new piece
+    - random 7-system bagshuffle as per https://tetris.wiki/Random_Generator
     - a Fisher-Yates shuffle of a bag of 7
     TASK: game flow and speed
     TASK: rotation and wall bumps
@@ -93,6 +93,7 @@ bool consoleDebug = true;
 // spawn box top left above field in cell units
 #define spawn_cx 3
 #define spawn_cy TFIELDH
+#define FULL_ROW (0x3FF)
 
 /*
     Level params from https://tetris.wiki/Tetris_(Game_Boy)
@@ -106,6 +107,7 @@ bool consoleDebug = true;
 uint8_t level_frames[] = {53, 49, 45, 41, 37, 33, 28, 22, 17, 11, 10, 9, 8, 7, 6, 6, 5, 5, 4, 4, 3};
 uint16_t game_lines = 0;
 uint32_t game_score = 0;
+uint8_t game_level = 0;
 int game_gravity = 1;
 enum gameState { ATTRACT_MODE, GAME_ON, GAME_OVER, HIGH_SCORES } game_state = ATTRACT_MODE;
 
@@ -123,6 +125,10 @@ uint16_t field_cells[TFIELDH];
 // bag of 7 shuffled tetronimoes...
 uint8_t tet_bag[7];
 uint8_t tet_bix;
+// Flags for jobs that need doing...
+#define FLAG_SELECT_NEXT_TET 1
+#define FLAG_CHECK_COMPLETE_LINES 2
+uint8_t flags = 0;
 
 void setup() {
     TX_RX_LED_INIT;
@@ -137,13 +143,22 @@ void setup() {
     Serial.begin(9600);     // serial over the USB when connected
     // Serial1.begin(9600);    // serial UART direct onto the ProMicro pins
     version();
+    game_state = ATTRACT_MODE;
+    // TODO proper modes - just start for now...
+    restart();
+}
+
+void restart() {
     randomSeed(analogRead(0));
     display.clearDisplay();
     display.setRotation(3);
-    game_state = ATTRACT_MODE;
     tet_bix = 99; // force a new bag
     curr_tetr = next_tet();
-    tetris_tests();
+    tetris_field_clear();
+    flags = 0;
+    game_lines = 0;
+    game_score = 0;
+    draw_all();
 }
 
 void version() {
@@ -166,6 +181,8 @@ void loop() {
     }
     // quick hack for some controls
     button_action(d_inputs);
+    check_complete_lines_and_clear();
+    check_select_next_tex_and_clear();
     while(Serial.available()){
         proc_console_input(Serial.read());
     }
@@ -196,10 +213,11 @@ void button_action(uint8_t din) {
     if(don & BTN_SELECT) {
         // choose next tetronimo
         select_tet(next_tet());
+        return;
     }
-    if(don & BTN_SELECT) {
-        Serial.println("r = redraw");
-        tetris_tests();
+    if(don & BTN_START) {
+        proc_command('r');
+        return;
     }
     if(din == (BTN_UP | BTN_START)) {
         testcells();
@@ -239,13 +257,6 @@ void task_inputs(void) {
       Serial.println(d_inputs, BIN);
     }
   }
-}
-
-char hexnib(uint8_t b, bool upper) {
-    uint8_t t = b >> (upper ? 4 : 0);
-    t = t & 0x0F;
-    t += (t >= 10 ? 'A'-10 : '0');
-    return (char)t;
 }
 
 int proc_console_line() {
@@ -374,6 +385,7 @@ int proc_command(int k) {
         }
         return 0;
     case '0':
+        THELP("0 = testcells");
         testcells();
         return 0;
     case 'c':
@@ -383,7 +395,11 @@ int proc_command(int k) {
         return 0;
     case 'r':
         THELP("r = redraw");
-        tetris_tests();
+        draw_all();
+        return 0;
+    case 'g':
+        THELP("g = get game state to console");
+        get_game_state();
         return 0;
     case 'q':
     case 'w':
@@ -477,21 +493,26 @@ int plot_cell_bm(uint8_t act, const uint8_t *bm, uint8_t w, uint8_t h, int8_t oc
         // Iterate bits in row from right to left
         for(uint8_t c = 0; c < w; c++) {
             int8_t cx = ocx + w - 1 - c;
-            bool set = ((b >> c) & 0x01);
+            // bool set = ((b >> c) & 0x01);
+            bool set = bitRead(b, c);
             // NB: test for clash before drawing!
-            if(act == CELL_DRAW) {
-                if(set) drawcell(cx, cy, set);
-            } else if(act == CELL_CLEAR) {
-                // when undrawing, clear occupied cells
-                if(set) drawcell(cx, cy, !set);
-            } else if(act == CELL_TEST) {
+            if(act == CELL_TEST) {
                 if(!set) continue; // don't care
                 // test for clash with field
                 ret = tetris_field_test_cell(cx, cy);
                 if(ret)
                     return ret;
+            } else if(act == CELL_CLEAR) {
+                // when undrawing, clear occupied cells
+                if(set) drawcell(cx, cy, !set);
+            } else if(act == CELL_DRAW) {
+                if(set) drawcell(cx, cy, set);
             } else if(act == CELL_FIELD_MERGE) {
-
+                if(set) {
+                    // draw and add to field...
+                    drawcell(cx, cy, set);
+                    bitSet(field_cells[cy], cx);
+                }
             }
         }
     }
@@ -502,12 +523,70 @@ void tetris_field_clear() {
     memset(field_cells, 0, sizeof(field_cells));
 }
 
+void get_game_state() {
+    // Dump game state to console...
+    // Show the field...
+    for(uint8_t i = 0; i < TFIELDH; i++) {
+        // Show rows from top down...
+        uint8_t k = TFIELDH - i - 1;
+        Serial.print("row[");
+        if(k < 10) Serial.print('0');
+        Serial.print(k, DEC);
+        Serial.print("] = |");
+        for(uint8_t j = 0; j < TFIELDW; j++) {
+            Serial.print(bitRead(field_cells[k], j) ? '#' : ' ');
+        }
+        Serial.print("| = 0x");
+        Serial.print(hexnib(field_cells[k], true));
+        Serial.print(hexnib(field_cells[k], false));
+        Serial.print(" = ");
+        Serial.print(field_cells[k]);
+        Serial.println();
+    }
+}
+
+void check_select_next_tex_and_clear() {
+    if(!bitRead(flags, FLAG_SELECT_NEXT_TET))
+        return;
+    select_tet(next_tet());
+    bitClear(flags, FLAG_SELECT_NEXT_TET);
+}
+
+void check_complete_lines_and_clear() {
+    if(!bitRead(flags, FLAG_CHECK_COMPLETE_LINES))
+        return;
+    uint8_t lines = check_complete_lines();
+    if(lines) {
+        Serial.print("Score lines ");
+        Serial.println(lines);
+        game_lines += lines;
+        draw_field_blocks();
+        draw_score();
+        display.display();
+    }
+    bitClear(flags, FLAG_CHECK_COMPLETE_LINES);
+}
+
+uint8_t check_complete_lines() {
+    // Go bottom up...
+    uint8_t ins = 0;
+    for(uint8_t i = 0; i < TFIELDH; i++) {
+        if((field_cells[i] & FULL_ROW) == FULL_ROW) {
+            // Full row should not be copied in...
+        } else {
+            field_cells[ins] = field_cells[i];
+            ins++;
+        }
+    }
+    return (TFIELDH - ins);
+}
+
 // return: 0 = no clash, 1 = field block clash
 // 2 = hit floor,
 int tetris_field_test_cell(int8_t cx, int8_t cy) {
     // If it is valid to test cell we return cell occupancy
     if(cx >= 0 && cy >= 0 && cx < TFIELDW && cy < TFIELDH)
-        return (field_cells[cy] >> cx & 0x01);
+        return bitRead(field_cells[cy], cx);
     if(cx < 0)
         return HIT_WALL_LEFT;
     if(cx >= TFIELDW)
@@ -538,34 +617,27 @@ int tet_move(int8_t dx, int8_t dy, int8_t drot){
         display.display();
     } else {
         if(dy < 0 && ((problem == HIT_FLOOR) || (problem == HIT_FIELD))) {
+            Serial.println("landed!");
             // merge tetronimo to field - use plot_cell_bm?
             // TODO ensure that plot_cell_bm returns HIT_FIELD or HIT_FLOOR earlier than HIT_WALL_LEFT or HIT_WALL_RIGHT!!!!
             // Hmmm, the proposed rotation might cause it to hit the floor
             // but we just want to prevent the rotation rather than merge.
             // Perhaps we need to ensure that only one rotate or one move
             // is done for any one call to tet_move.
-
+            plot_cell_bm(CELL_FIELD_MERGE, tet_bms[curr_tetr][curr_tetr_rot], curr_tetr_w, curr_tetr_w, curr_tetr_cx, curr_tetr_cy);
+            display.display();
+            // Avoid recursion here - schedule call to select_tet(next_tet())
+            bitSet(flags, FLAG_SELECT_NEXT_TET);
+            bitSet(flags, FLAG_CHECK_COMPLETE_LINES);
         }
     }
     return problem;
 }
 
-void clear_spawn_area() {
-    // clear spawn area - 4x4 cells
-    display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
-}
-
 void select_tet(uint8_t tt) {
     // Select the current tetronimo and spawn...
     curr_tetr = tt;
-    display.setCursor(0,0);
-    display.println("");
-    display.setTextSize(1);
-    display.setTextWrap(false);
-    display.setTextColor(WHITE, BLACK);
-    display.print((int)tt, DEC);
-    display.print("=");
-    display.write(tet_chars[tt]);
+    draw_tet_info(tt);
     curr_tetr_cx = spawn_cx;
     curr_tetr_cy = spawn_cy;
     curr_tetr_w = tet_box_size[tt];
@@ -602,18 +674,50 @@ void draw_square_cell_bm(const uint8_t *bm, uint8_t bsize, uint8_t ocx, uint8_t 
     }
 }
 
-void tetris_tests() {
-    display.clearDisplay();
-    display.setRotation(3);
+void draw_field_blocks() {
+    for(uint8_t row = 0; row < TFIELDH; row++) {
+        for(uint8_t col = 0; col < TFIELDW; col++) {
+            drawcell(col, row, (bitRead(field_cells[row], col) ? WHITE:BLACK));
+        }
+    }
+}
+
+void clear_spawn_area() {
+    // clear spawn area - 4x4 cells
+    display.fillRect(c2px(spawn_cx), c2py(spawn_cy), (TCELLSZ * 4), (TCELLSZ * 4), BLACK);
+}
+
+void draw_text_setup() {
+    display.setCursor(0,0);
     display.setTextSize(1);
     display.setTextWrap(false);
-    display.setTextColor(WHITE);
-    display.setCursor(0,0);
-    display.println("Tetrs");
-    tetris_field_clear();
-    tetris_field_border();
-    select_tet(curr_tetr);
+    display.setTextColor(WHITE, BLACK);
+}
 
+void draw_tet_info(uint8_t tt) {
+    draw_text_setup();
+    display.println("");
+    display.print((int)tt, DEC);
+    display.print("=");
+    display.write(tet_chars[tt]);
+}
+
+void draw_score() {
+    draw_text_setup();
+    display.println("");
+    display.println("");
+    display.print(game_lines, DEC);
+}
+
+void draw_all() {
+    display.clearDisplay();
+    display.setRotation(3);
+    draw_text_setup();
+    display.println("Tetrs");
+    draw_score();
+    tetris_field_border();
+    draw_field_blocks();
+    select_tet(curr_tetr);
     display.display();
 }
 
@@ -701,4 +805,12 @@ uint8_t hexdig(uint8_t c) {
 uint8_t hexdigs(uint8_t c1, uint8_t c2) {
     // Hex input...
     return (hexdig(c1) << 4) | hexdig(c2);
+}
+
+char hexnib(uint8_t b, bool upper) {
+    // hex output...
+    uint8_t t = b >> (upper ? 4 : 0);
+    t = t & 0x0F;
+    t += (t >= 10 ? 'A'-10 : '0');
+    return (char)t;
 }
