@@ -1,6 +1,6 @@
 
  
-#include "deb8.h"
+#include "debounce8.h"
 
 uint8_t debouncer8(uint8_t sample, debounce8_t* p)
 {

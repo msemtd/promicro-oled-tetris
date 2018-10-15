@@ -9,7 +9,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "deb8.h"
+#include "debounce8.h"
 
 #define OLED_RESET 4
 Adafruit_SSD1306 display(OLED_RESET);
@@ -23,7 +23,7 @@ const int RXLED = 17;
 // Digital I/O for all 16 possible buttons/joypad on the Pro-Micro
 //const uint8_t d_map[16] = {2,3,4,5,6,7,8,9,
 //                           10,16,14,15,18,19,20,21};
-// We only need 8 inputs so use an 8-bit state var and deboucer
+// We only need 8 inputs so use an 8-bit state var and debouncer
 const uint8_t d_map[8] = {10,16,14,15,18,19,20,21};
 // Here we want just the top 8 inputs
 static uint8_t d_inputs = 0;
